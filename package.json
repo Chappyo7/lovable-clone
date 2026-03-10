@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "npm install && cd client && npm install && npx vite build --outDir ../dist/client",
+    "start": "npx tsx server/index.ts",
+    "dev": "npx tsx watch server/index.ts",
     "dev:server": "npx tsx watch server/index.ts",
     "dev:client": "cd client && npx vite",
     "build:client": "cd client && npx vite build --outDir ../dist/client",
-    "start": "npx tsx server/index.ts",
-    "dev": "npx tsx watch server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

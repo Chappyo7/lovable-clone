@@ -131,6 +131,15 @@ async function start(): Promise<void> {
     console.log(`📁 Projects stored in ${PROJECT_ROOT}`)
     console.log(`🤖 Claude CLI: ${claudeOk ? '✓ found' : '✗ not found'}`)
   })
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Try: PORT=3002 npm start`)
+    } else {
+      console.error('❌ Server error:', err.message)
+    }
+    process.exit(1)
+  })
 }
 
 start()
