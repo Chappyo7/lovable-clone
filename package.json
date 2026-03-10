@@ -1,0 +1,28 @@
+{
+  "name": "lovable-clone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "npm install && cd client && npm install && npx vite build --outDir ../dist/client",
+    "start": "npx tsx server/index.ts",
+    "dev": "npx tsx watch server/index.ts",
+    "dev:server": "npx tsx watch server/index.ts",
+    "dev:client": "cd client && npx vite",
+    "build:client": "cd client && npx vite build --outDir ../dist/client",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
