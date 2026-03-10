@@ -13,7 +13,7 @@ export class ClaudeManager {
   private process: ChildProcess | null = null
   private buffer = ''
   private timeout: ReturnType<typeof setTimeout> | null = null
-  private static TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
+  private static TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes
 
   isBusy(): boolean {
     return this.process !== null
@@ -25,6 +25,7 @@ export class ClaudeManager {
     prompt: string,
     conversationId: string | undefined,
     onEvent?: (event: ClaudeEvent) => void,
+    model?: string,
   ): void {
     if (this.process) {
       throw new Error('Claude is busy — cancel or wait for completion')
@@ -35,6 +36,10 @@ export class ClaudeManager {
       '--output-format', 'stream-json',
       '--verbose',
     ]
+
+    if (model) {
+      args.push('--model', model)
+    }
 
     if (conversationId) {
       args.push('--resume', conversationId)
@@ -53,7 +58,7 @@ export class ClaudeManager {
     // 5-minute timeout — kill the process if it hangs
     this.timeout = setTimeout(() => {
       if (this.process) {
-        onEvent?.({ type: 'error', message: 'Claude CLI timed out after 5 minutes' })
+        onEvent?.({ type: 'error', message: 'Claude CLI timed out after 15 minutes' })
         this.cancel()
       }
     }, ClaudeManager.TIMEOUT_MS)

@@ -8,14 +8,18 @@ export interface Message {
   activities?: ChatActivity[]
 }
 
+export type ModelChoice = 'sonnet' | 'opus'
+
 interface ChatPanelProps {
   messages: Message[]
   isStreaming: boolean
+  model: ModelChoice
+  onModelChange: (model: ModelChoice) => void
   onSendPrompt: (content: string) => void
   onCancel: () => void
 }
 
-export default function ChatPanel({ messages, isStreaming, onSendPrompt, onCancel }: ChatPanelProps) {
+export default function ChatPanel({ messages, isStreaming, model, onModelChange, onSendPrompt, onCancel }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -67,22 +71,34 @@ export default function ChatPanel({ messages, isStreaming, onSendPrompt, onCance
             rows={2}
             disabled={isStreaming}
           />
-          <div className="flex justify-end mt-1.5 gap-2">
-            {isStreaming && (
-              <button
-                onClick={onCancel}
-                className="text-[10px] text-red-400 hover:text-red-300 transition"
-              >
-                Stop
-              </button>
-            )}
+          <div className="flex items-center justify-between mt-1.5">
             <button
-              onClick={handleSubmit}
-              disabled={isStreaming || !input.trim()}
-              className="w-6 h-6 bg-accent rounded-full flex items-center justify-center text-base font-bold hover:brightness-110 transition disabled:opacity-40"
+              onClick={() => onModelChange(model === 'sonnet' ? 'opus' : 'sonnet')}
+              disabled={isStreaming}
+              className="text-[10px] px-2 py-0.5 rounded border border-border hover:border-primary transition disabled:opacity-40 flex items-center gap-1"
+              title={`Using ${model === 'sonnet' ? 'Sonnet (fast)' : 'Opus (powerful)'} — click to switch`}
             >
-              ↑
+              <span className={model === 'opus' ? 'text-purple-400' : 'text-primary'}>
+                {model === 'opus' ? '◆ Opus' : '⚡ Sonnet'}
+              </span>
             </button>
+            <div className="flex gap-2">
+              {isStreaming && (
+                <button
+                  onClick={onCancel}
+                  className="text-[10px] text-red-400 hover:text-red-300 transition"
+                >
+                  Stop
+                </button>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={isStreaming || !input.trim()}
+                className="w-6 h-6 bg-accent rounded-full flex items-center justify-center text-base font-bold hover:brightness-110 transition disabled:opacity-40"
+              >
+                ↑
+              </button>
+            </div>
           </div>
         </div>
       </div>

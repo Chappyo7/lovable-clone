@@ -13,6 +13,7 @@ interface ClientMessage {
   type: 'send_prompt' | 'cancel' | 'switch_project'
   projectId: string
   content?: string
+  model?: string
 }
 
 export async function handleMessage(raw: string, ctx: WsContext): Promise<void> {
@@ -80,6 +81,7 @@ async function handleSendPrompt(msg: ClientMessage, ctx: WsContext): Promise<voi
     (event: ClaudeEvent) => {
       ctx.send(JSON.stringify(event))
     },
+    msg.model,
   )
 }
 

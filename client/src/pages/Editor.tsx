@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
-import ChatPanel, { type Message } from '../components/ChatPanel'
+import ChatPanel, { type Message, type ModelChoice } from '../components/ChatPanel'
 import PreviewFrame from '../components/PreviewFrame'
 import Toolbar from '../components/Toolbar'
 import { useWebSocket, type ServerEvent } from '../hooks/useWebSocket'
@@ -13,6 +13,7 @@ export default function Editor() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [previewPort, setPreviewPort] = useState<number | null>(null)
+  const [model, setModel] = useState<ModelChoice>('sonnet')
   const currentAssistantId = useRef<string | null>(null)
   const sentInitialPrompt = useRef(false)
 
@@ -95,7 +96,7 @@ export default function Editor() {
     setTimeout(() => {
       setMessages([{ id: `user-${Date.now()}`, role: 'user', content: initialPrompt }])
       setIsStreaming(true)
-      send({ type: 'send_prompt', projectId, content: initialPrompt })
+      send({ type: 'send_prompt', projectId, content: initialPrompt, model })
     }, 500)
   }
 
@@ -103,7 +104,7 @@ export default function Editor() {
     if (!projectId) return
     setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', content }])
     setIsStreaming(true)
-    send({ type: 'send_prompt', projectId, content })
+    send({ type: 'send_prompt', projectId, content, model })
   }
 
   const handleCancel = () => {
@@ -130,6 +131,8 @@ export default function Editor() {
         <ChatPanel
           messages={messages}
           isStreaming={isStreaming}
+          model={model}
+          onModelChange={setModel}
           onSendPrompt={handleSendPrompt}
           onCancel={handleCancel}
         />
