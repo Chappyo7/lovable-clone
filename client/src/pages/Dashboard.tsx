@@ -1,16 +1,29 @@
-import { useState } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import ProjectCard, { NewProjectCard } from '../components/ProjectCard'
+import AuthModal from '../components/AuthModal'
 import { useProjects } from '../hooks/useProject'
+import { useWebSocket, type ServerEvent } from '../hooks/useWebSocket'
+import { useAuth } from '../hooks/useAuth'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const { projects, createProject } = useProjects()
   const [prompt, setPrompt] = useState('')
+  const authHandlerRef = useRef<(event: ServerEvent) => void>(() => {})
+
+  const handleEvent = useCallback((event: ServerEvent) => {
+    authHandlerRef.current(event)
+  }, [])
+
+  const { send, connected } = useWebSocket(handleEvent)
+  const auth = useAuth(send, connected)
+  authHandlerRef.current = auth.handleAuthEvent
 
   const handleSubmit = async () => {
     if (!prompt.trim()) return
+    if (!auth.authenticated) return // Block if not authenticated
     const name = prompt.trim().slice(0, 40)
     const project = await createProject(name)
     navigate(`/project/${project.id}`, { state: { initialPrompt: prompt } })
@@ -69,6 +82,16 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Auth Modal - show when auth is checked but not authenticated */}
+      {auth.checked && !auth.authenticated && (
+        <AuthModal
+          cliFound={auth.cliFound}
+          loginInProgress={auth.loginInProgress}
+          onStartLogin={auth.startLogin}
+          onCancelLogin={auth.cancelLogin}
+        />
+      )}
     </div>
   )
 }

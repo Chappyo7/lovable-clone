@@ -20,6 +20,12 @@ describe('ws-handler', () => {
         stop: vi.fn(),
         getStatus: vi.fn().mockReturnValue({ running: false, port: null, projectId: null }),
       } as any,
+      authManager: {
+        checkAuthSync: vi.fn().mockReturnValue({ cliFound: true, authenticated: true }),
+        startLogin: vi.fn(),
+        isLoginInProgress: vi.fn().mockReturnValue(false),
+        cancelLogin: vi.fn(),
+      } as any,
       send: vi.fn(),
     }
   })

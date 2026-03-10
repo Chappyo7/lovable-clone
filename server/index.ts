@@ -5,6 +5,7 @@ import path from 'path'
 import { ProjectManager } from './project-manager.js'
 import { ViteManager } from './vite-manager.js'
 import { ClaudeManager } from './claude-manager.js'
+import { AuthManager } from './auth-manager.js'
 import { handleMessage, type WsContext } from './ws-handler.js'
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
@@ -22,6 +23,7 @@ const wss = new WebSocketServer({ server, path: '/ws' })
 const projectManager = new ProjectManager(PROJECT_ROOT, TEMPLATE_DIR)
 const viteManager = new ViteManager()
 const claudeManager = new ClaudeManager()
+const authManager = new AuthManager()
 
 // JSON body parsing
 app.use(express.json())
@@ -79,6 +81,7 @@ wss.on('connection', (ws: WebSocket) => {
     projectManager,
     claudeManager,
     viteManager,
+    authManager,
     send: (data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data)

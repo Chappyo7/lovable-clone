@@ -1,19 +1,22 @@
 import type { ProjectManager } from './project-manager.js'
 import type { ViteManager } from './vite-manager.js'
 import type { ClaudeManager, ClaudeEvent } from './claude-manager.js'
+import type { AuthManager, AuthStatus } from './auth-manager.js'
 
 export interface WsContext {
   projectManager: ProjectManager
   claudeManager: ClaudeManager
   viteManager: ViteManager
+  authManager: AuthManager
   send: (data: string) => void
 }
 
 interface ClientMessage {
-  type: 'send_prompt' | 'cancel' | 'switch_project'
-  projectId: string
+  type: 'send_prompt' | 'cancel' | 'switch_project' | 'check_auth' | 'start_login' | 'cancel_login'
+  projectId?: string
   content?: string
   model?: string
+  email?: string
 }
 
 export async function handleMessage(raw: string, ctx: WsContext): Promise<void> {
@@ -36,6 +39,15 @@ export async function handleMessage(raw: string, ctx: WsContext): Promise<void> 
     case 'switch_project':
       await handleSwitchProject(msg, ctx)
       break
+    case 'check_auth':
+      handleCheckAuth(ctx)
+      break
+    case 'start_login':
+      handleStartLogin(msg, ctx)
+      break
+    case 'cancel_login':
+      handleCancelLogin(ctx)
+      break
     default:
       ctx.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${(msg as any).type}` }))
   }
@@ -44,6 +56,11 @@ export async function handleMessage(raw: string, ctx: WsContext): Promise<void> 
 async function handleSendPrompt(msg: ClientMessage, ctx: WsContext): Promise<void> {
   if (ctx.claudeManager.isBusy()) {
     ctx.send(JSON.stringify({ type: 'error', message: 'Claude is busy. Cancel or wait.' }))
+    return
+  }
+
+  if (!msg.projectId) {
+    ctx.send(JSON.stringify({ type: 'error', message: 'Project ID required' }))
     return
   }
 
@@ -91,7 +108,51 @@ async function handleSwitchProject(msg: ClientMessage, ctx: WsContext): Promise<
     ctx.claudeManager.cancel()
   }
 
-  const project = await ctx.projectManager.getProject(msg.projectId)
-  const port = await ctx.viteManager.start(project.path, msg.projectId)
+  const project = await ctx.projectManager.getProject(msg.projectId!)
+  const port = await ctx.viteManager.start(project.path, msg.projectId!)
   ctx.send(JSON.stringify({ type: 'vite_status', status: 'ready', port }))
+}
+
+function handleCheckAuth(ctx: WsContext): void {
+  const status = ctx.authManager.checkAuthSync()
+  ctx.send(JSON.stringify({
+    type: 'auth_status',
+    cliFound: status.cliFound,
+    authenticated: status.authenticated,
+    account: status.account,
+  }))
+}
+
+function handleStartLogin(msg: ClientMessage, ctx: WsContext): void {
+  if (ctx.authManager.isLoginInProgress()) {
+    ctx.send(JSON.stringify({ type: 'error', message: 'Login already in progress' }))
+    return
+  }
+
+  ctx.authManager.startLogin(
+    (status) => {
+      // Auth succeeded
+      ctx.send(JSON.stringify({
+        type: 'auth_status',
+        cliFound: status.cliFound,
+        authenticated: status.authenticated,
+        account: status.account,
+      }))
+    },
+    () => {
+      // Timeout
+      ctx.send(JSON.stringify({
+        type: 'login_timeout',
+        message: 'Login timed out after 5 minutes. Please try again.',
+      }))
+    },
+    msg.email,
+  )
+
+  ctx.send(JSON.stringify({ type: 'login_started' }))
+}
+
+function handleCancelLogin(ctx: WsContext): void {
+  ctx.authManager.cancelLogin()
+  ctx.send(JSON.stringify({ type: 'login_cancelled' }))
 }

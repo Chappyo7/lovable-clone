@@ -3,7 +3,9 @@ import { useParams, useLocation } from 'react-router-dom'
 import ChatPanel, { type Message, type ModelChoice } from '../components/ChatPanel'
 import PreviewFrame from '../components/PreviewFrame'
 import Toolbar from '../components/Toolbar'
+import AuthModal from '../components/AuthModal'
 import { useWebSocket, type ServerEvent } from '../hooks/useWebSocket'
+import { useAuth } from '../hooks/useAuth'
 
 export default function Editor() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -16,8 +18,11 @@ export default function Editor() {
   const [model, setModel] = useState<ModelChoice>('sonnet')
   const currentAssistantId = useRef<string | null>(null)
   const sentInitialPrompt = useRef(false)
+  const authHandlerRef = useRef<(event: ServerEvent) => void>(() => {})
 
   const handleEvent = useCallback((event: ServerEvent) => {
+    // Handle auth events
+    authHandlerRef.current(event)
     switch (event.type) {
       case 'assistant_text':
         setMessages((prev) => {
@@ -89,9 +94,11 @@ export default function Editor() {
   }, [])
 
   const { send, connected } = useWebSocket(handleEvent)
+  const auth = useAuth(send, connected)
+  authHandlerRef.current = auth.handleAuthEvent
 
-  // Send initial prompt if navigated from dashboard
-  if (initialPrompt && !sentInitialPrompt.current && connected && projectId) {
+  // Send initial prompt if navigated from dashboard (only when authenticated)
+  if (initialPrompt && !sentInitialPrompt.current && connected && projectId && auth.authenticated) {
     sentInitialPrompt.current = true
     setTimeout(() => {
       setMessages([{ id: `user-${Date.now()}`, role: 'user', content: initialPrompt }])
@@ -101,7 +108,7 @@ export default function Editor() {
   }
 
   const handleSendPrompt = (content: string) => {
-    if (!projectId) return
+    if (!projectId || !auth.authenticated) return
     setMessages((prev) => [...prev, { id: `user-${Date.now()}`, role: 'user', content }])
     setIsStreaming(true)
     send({ type: 'send_prompt', projectId, content, model })
@@ -138,6 +145,16 @@ export default function Editor() {
         />
         <PreviewFrame port={previewPort} />
       </div>
+
+      {/* Auth Modal - show when auth is checked but not authenticated */}
+      {auth.checked && !auth.authenticated && (
+        <AuthModal
+          cliFound={auth.cliFound}
+          loginInProgress={auth.loginInProgress}
+          onStartLogin={auth.startLogin}
+          onCancelLogin={auth.cancelLogin}
+        />
+      )}
     </div>
   )
 }

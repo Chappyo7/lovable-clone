@@ -7,6 +7,10 @@ export type ServerEvent =
   | { type: 'stream_complete' }
   | { type: 'error'; message: string }
   | { type: 'vite_status'; status: string; port: number }
+  | { type: 'auth_status'; cliFound: boolean; authenticated: boolean; account?: string }
+  | { type: 'login_started' }
+  | { type: 'login_cancelled' }
+  | { type: 'login_timeout'; message: string }
 
 export function useWebSocket(onEvent: (event: ServerEvent) => void) {
   const wsRef = useRef<WebSocket | null>(null)
