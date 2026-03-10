@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:server": "tsx watch server/index.ts",
-    "dev:client": "cd client && npx vite --port 5173",
+    "dev:server": "npx tsx watch server/index.ts",
+    "dev:client": "cd client && npx vite",
     "build:client": "cd client && npx vite build --outDir ../dist/client",
     "start": "npx tsx server/index.ts",
     "dev": "npx tsx watch server/index.ts",
