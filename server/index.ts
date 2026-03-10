@@ -39,6 +39,7 @@ app.post('/api/projects', async (req, res) => {
     return
   }
   const project = await projectManager.createProject(name)
+  await projectManager.installDependencies(project.path)
   res.status(201).json(project)
 })
 

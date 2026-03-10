@@ -86,6 +86,11 @@ export class ProjectManager {
     return { id, name: meta.name, path: projectPath, lastModified: stat.mtime.toISOString() }
   }
 
+  async installDependencies(projectPath: string): Promise<void> {
+    const { execSync } = await import('child_process')
+    execSync('npm install', { cwd: projectPath, stdio: 'pipe' })
+  }
+
   async deleteProject(id: string): Promise<void> {
     const projectPath = path.join(this.projectRoot, id)
     await fs.rm(projectPath, { recursive: true, force: true })
