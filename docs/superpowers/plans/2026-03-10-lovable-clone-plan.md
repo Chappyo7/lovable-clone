@@ -18,6 +18,7 @@
 lovable-clone/
 ├── package.json                        # Root: scripts to build client + start server
 ├── tsconfig.json                       # Shared TS base config
+├── vitest.config.ts                    # Test runner config
 ├── .gitignore
 ├── server/
 │   ├── tsconfig.json                   # Server TS config (Node target)
@@ -82,6 +83,7 @@ lovable-clone/
 **Files:**
 - Create: `package.json`
 - Create: `tsconfig.json`
+- Create: `vitest.config.ts`
 - Create: `.gitignore`
 - Create: `server/tsconfig.json`
 - Create: `client/tsconfig.json`
@@ -98,7 +100,8 @@ lovable-clone/
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "cd client && npx vite --port 5173",
     "build:client": "cd client && npx vite build --outDir ../dist/client",
-    "start": "node dist/server/index.js",
+    "start": "npx tsx server/index.ts",
+    "dev": "npx tsx watch server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -389,6 +392,7 @@ git commit -m "feat: add Vite+React+Tailwind project template for scaffolding"
 - Create: `client/tsconfig.json`
 - Create: `client/index.html`
 - Create: `client/src/main.tsx`
+- Create: `client/src/index.css`
 - Create: `client/src/App.tsx`
 - Create: `client/src/lib/theme.ts`
 
@@ -965,10 +969,23 @@ export class ViteManager extends EventEmitter {
     })
 
     this.process.on('exit', (code) => {
-      if (code !== null && code !== 0) {
-        this.emit('crash', { code, projectId })
-      }
+      const crashedProjectPath = projectPath
+      const crashedProjectId = projectId
+      const crashedPort = this.port
       this.process = null
+
+      if (code !== null && code !== 0) {
+        this.emit('crash', { code, projectId: crashedProjectId })
+        // Auto-restart after 2 seconds on crash
+        setTimeout(async () => {
+          try {
+            console.log(`🔄 Auto-restarting Vite for ${crashedProjectId}...`)
+            await this.start(crashedProjectPath, crashedProjectId)
+          } catch (err) {
+            console.error('Failed to auto-restart Vite:', err)
+          }
+        }, 2000)
+      }
     })
 
     return this.port
@@ -1108,6 +1125,8 @@ export type ClaudeEvent =
 export class ClaudeManager {
   private process: ChildProcess | null = null
   private buffer = ''
+  private timeout: ReturnType<typeof setTimeout> | null = null
+  private static TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 
   isBusy(): boolean {
     return this.process !== null
@@ -1142,6 +1161,15 @@ export class ClaudeManager {
     })
 
     this.buffer = ''
+    let capturedConversationId: string | undefined
+
+    // 5-minute timeout — kill the process if it hangs
+    this.timeout = setTimeout(() => {
+      if (this.process) {
+        onEvent?.({ type: 'error', message: 'Claude CLI timed out after 5 minutes' })
+        this.cancel()
+      }
+    }, ClaudeManager.TIMEOUT_MS)
 
     this.process.stdout?.on('data', (data: Buffer) => {
       this.buffer += data.toString()
@@ -1152,6 +1180,12 @@ export class ClaudeManager {
         if (!line.trim()) continue
         try {
           const raw = JSON.parse(line)
+
+          // Capture conversation ID from result event
+          if (raw.type === 'result' && raw.session_id) {
+            capturedConversationId = raw.session_id
+          }
+
           const events = this.parseRawEvent(raw)
           for (const event of events) {
             onEvent?.(event)
@@ -1165,11 +1199,20 @@ export class ClaudeManager {
     this.process.stderr?.on('data', (data: Buffer) => {
       const message = data.toString().trim()
       if (message) {
-        onEvent?.({ type: 'error', message })
+        // Detect authentication errors
+        if (message.includes('not authenticated') || message.includes('login') || message.includes('auth')) {
+          onEvent?.({ type: 'error', message: `Authentication error: ${message}. Run \`claude login\` in your terminal.` })
+        } else {
+          onEvent?.({ type: 'error', message })
+        }
       }
     })
 
     this.process.on('exit', async (code) => {
+      if (this.timeout) {
+        clearTimeout(this.timeout)
+        this.timeout = null
+      }
       this.process = null
       this.buffer = ''
 
@@ -1179,8 +1222,10 @@ export class ClaudeManager {
 
       onEvent?.({ type: 'stream_complete' })
 
-      // Try to save conversation ID from state file
-      await this.saveConversationId(projectPath, projectId)
+      // Save conversation ID if captured
+      if (capturedConversationId) {
+        await this.saveConversationId(projectPath, capturedConversationId)
+      }
     })
   }
 
@@ -1240,25 +1285,15 @@ export class ClaudeManager {
     return undefined
   }
 
-  private async saveConversationId(projectPath: string, _projectId: string): Promise<void> {
-    // The conversation ID is managed by Claude CLI's session system.
-    // We read it from the CLI's session storage after the process completes.
-    // For now, we store the session info in .lovable-clone/state.json
+  private async saveConversationId(projectPath: string, conversationId: string): Promise<void> {
     const stateDir = path.join(projectPath, '.lovable-clone')
     const statePath = path.join(stateDir, 'state.json')
 
-    try {
-      await fs.access(statePath)
-      // State already exists, don't overwrite
-    } catch {
-      // Create initial state — conversation ID will be populated
-      // after we can extract it from CLI output
-      await fs.mkdir(stateDir, { recursive: true })
-      await fs.writeFile(statePath, JSON.stringify({
-        conversationId: null,
-        createdAt: new Date().toISOString(),
-      }))
-    }
+    await fs.mkdir(stateDir, { recursive: true })
+    await fs.writeFile(statePath, JSON.stringify({
+      conversationId,
+      createdAt: new Date().toISOString(),
+    }))
   }
 }
 ```
@@ -1475,19 +1510,17 @@ import express from 'express'
 import { createServer } from 'http'
 import { WebSocketServer, WebSocket } from 'ws'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { ProjectManager } from './project-manager.js'
 import { ViteManager } from './vite-manager.js'
 import { ClaudeManager } from './claude-manager.js'
 import { handleMessage, type WsContext } from './ws-handler.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = parseInt(process.env.PORT ?? '3001', 10)
 const PROJECT_ROOT = process.env.PROJECT_ROOT ?? path.join(
   process.env.HOME ?? process.env.USERPROFILE ?? '.',
   'lovable-projects',
 )
-const TEMPLATE_DIR = path.resolve(__dirname, '..', 'templates', 'vite-react')
+const TEMPLATE_DIR = path.resolve(process.cwd(), 'templates', 'vite-react')
 
 const app = express()
 const server = createServer(app)
@@ -1537,7 +1570,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 })
 
 // Serve built client (production mode)
-const clientDist = path.resolve(__dirname, '..', 'dist', 'client')
+const clientDist = path.resolve(process.cwd(), 'dist', 'client')
 app.use(express.static(clientDist))
 
 // SPA fallback — serve index.html for client routes
@@ -1649,33 +1682,45 @@ export function useWebSocket(onEvent: (event: ServerEvent) => void) {
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
   const onEventRef = useRef(onEvent)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   onEventRef.current = onEvent
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/ws`
-    const ws = new WebSocket(wsUrl)
-    wsRef.current = ws
+    let unmounted = false
 
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => {
-      setConnected(false)
-      // Auto-reconnect after 2 seconds
-      setTimeout(() => {
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${window.location.host}/ws`
+      const ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => setConnected(true)
+      ws.onclose = () => {
+        setConnected(false)
         wsRef.current = null
-      }, 2000)
-    }
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as ServerEvent
-        onEventRef.current(data)
-      } catch {
-        // Ignore unparseable messages
+        // Auto-reconnect after 2 seconds unless unmounted
+        if (!unmounted) {
+          reconnectTimerRef.current = setTimeout(connect, 2000)
+        }
+      }
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as ServerEvent
+          onEventRef.current(data)
+        } catch {
+          // Ignore unparseable messages
+        }
       }
     }
 
+    connect()
+
     return () => {
-      ws.close()
+      unmounted = true
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      wsRef.current?.close()
     }
   }, [])
 
@@ -2261,11 +2306,14 @@ export default function Editor() {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (last?.role === 'assistant' && last.id === currentAssistantId.current && last.activities) {
-            const activities = last.activities.map((a) =>
-              a.tool === event.tool && a.status === 'running'
-                ? { ...a, status: event.status }
-                : a
-            )
+            let matched = false
+            const activities = last.activities.map((a) => {
+              if (!matched && a.tool === event.tool && a.status === 'running' && a.path === event.path) {
+                matched = true
+                return { ...a, status: event.status }
+              }
+              return a
+            })
             return [...prev.slice(0, -1), { ...last, activities }]
           }
           return prev
