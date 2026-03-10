@@ -35,6 +35,7 @@ export class ClaudeManager {
       '-p', prompt,
       '--output-format', 'stream-json',
       '--verbose',
+      '--permission-mode', 'acceptEdits',
     ]
 
     if (model) {

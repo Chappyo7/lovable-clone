@@ -103,13 +103,19 @@ wss.on('connection', (ws: WebSocket) => {
 })
 
 // Startup checks
-async function checkClaude(): Promise<boolean> {
+async function checkClaude(): Promise<{ found: boolean; authenticated: boolean }> {
   const { execSync } = await import('child_process')
   try {
     execSync('claude --version', { stdio: 'pipe' })
-    return true
   } catch {
-    return false
+    return { found: false, authenticated: false }
+  }
+  try {
+    // Quick auth check — ask Claude a trivial question in print mode
+    execSync('claude -p "hi" --max-turns 1 --output-format text', { stdio: 'pipe', timeout: 15000 })
+    return { found: true, authenticated: true }
+  } catch {
+    return { found: true, authenticated: false }
   }
 }
 
@@ -121,15 +127,17 @@ async function ensureProjectRoot(): Promise<void> {
 async function start(): Promise<void> {
   await ensureProjectRoot()
 
-  const claudeOk = await checkClaude()
-  if (!claudeOk) {
+  const claude = await checkClaude()
+  if (!claude.found) {
     console.warn('⚠️  Claude CLI not found. Install it or ensure it is in PATH.')
+  } else if (!claude.authenticated) {
+    console.warn('⚠️  Claude CLI found but not authenticated. Run: claude login')
   }
 
   server.listen(PORT, () => {
     console.log(`⚡ Lovable Clone running at http://localhost:${PORT}`)
     console.log(`📁 Projects stored in ${PROJECT_ROOT}`)
-    console.log(`🤖 Claude CLI: ${claudeOk ? '✓ found' : '✗ not found'}`)
+    console.log(`🤖 Claude CLI: ${claude.found ? (claude.authenticated ? '✓ ready' : '⚠ not authenticated — run: claude login') : '✗ not found'}`)
   })
 
   server.on('error', (err: NodeJS.ErrnoException) => {
